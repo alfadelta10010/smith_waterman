@@ -4,4 +4,4 @@
 ### Contents
 - `main.c`: The program dividing the algorithm on multiple Mempool cores
 - `strings.txt`: The text file containing the randomised strings of A/T/C/G
-- `stringgen.py`: Python code to generate `strings.txt`
+- `string_generator.py`: Python code to generate `strings.txt`
