@@ -1,4 +1,4 @@
-#include <stdint.h>
+/#include <stdint.h>
 #include "encoding.h"
 #include <stdio.h>
 #include <stdbool.h>
@@ -9,10 +9,10 @@
 
 // DEFENITIONS
 
-#define MAX_SEQ_LENGTH 200
-#define MATCH_SCORE 1
-#define MISMATCH_SCORE -2
-#define GAP_SCORE -1
+#define MAX_SEQ_LENGTH 100
+#define MATCH_SCORE 2
+#define MISMATCH_SCORE 1
+#define GAP_SCORE 2
 
 // CORE_COUNT
 #define cc 1
@@ -26,8 +26,10 @@ int compute_time=0;
 uint32_t temp_compute[cc]={0};
 
 // SEQUENCE DATA
-const char seq1[] = "AATGAGTGCGTTATACGAGACGAACAAAGCTGTTTTCTATTGGTCCGCCCCGGACGGCGTCAGTAATCGTGGTGGGAAAA";
-const char seq2[] = "CGACGTGGGTACACCCATTTCCAACTCTGTTCTATTCCAACTGTATACGGCTTCAGGGGGTAAGGGTGTTTCGTCGGGAATAACTCACGTGCCCTCTTGATTTTTTACGCCTATGTTTAGCACGGCATACATCAAGATCCCTACGTGGGCTGCGGATGGACCGAATAGGATGCAGACATACGGAGGCGCACTGCCTCAGA";
+const char seq1[]="CCGGGGGGATCACCGCGGGCCTCCGCCGGTAGCTTGCGAT";
+const char seq2[]="AATCAATGAACACCGCATACCCTATTGTTGAAAGCGCTACGATCGTGATTTACTATCGTGCTCGACTGCAATGAGCCTAACGAAAAGTCGTGCTAGAACT";
+//const char seq1[]="CTCC";
+//const char seq2[]="AAAC";
 int seq1_len=strlen(seq1);
 int seq2_len=strlen(seq2);
 
@@ -161,21 +163,32 @@ void smith_waterman(uint32_t core_id) {
       int start = core_id * elements_per_core;
 
       int end = (core_id == active_cores - 1) ? num_diagonal_elements : (core_id + 1) * elements_per_core;
-      //printf("the start and end index for core %d that it computes is %d and %d \n",core_id,start,end-1);
       // initial state of dp matrix
 
       uint32_t start_local_compute=mempool_get_timer();
       compute_diagonal_segment(diagonal_index, start, end);
       uint32_t end_local_compute=mempool_get_timer();
       temp_compute[core_id]+=(end_local_compute-start_local_compute);
+/*
+         if(core_id==0) {
+           printf("diagonal %d has been computed the dp matrix is\n",diagonal_index);
+           for(int i=0;i<seq1_len;i++){
+             for(int j=0;j<seq2_len;j++) {
+               printf("%d\t",dp[i][j]);
+             }
+             printf("\n");
+           }
+         }
+ */
     }
 
     //barrier after diagonal computation
     mempool_barrier(cc);
 
-    uint32_t max_compute_time=temp_compute[0];
-    uint32_t min_compute_time=temp_compute[0];
     if(core_id==0) {
+      uint32_t max_compute_time=temp_compute[0];
+      uint32_t min_compute_time=temp_compute[0];
+
       // max and min compute_time
       for(int i=0;i<active_cores;i++) {
         if(temp_compute[i]>max_compute_time) {
@@ -188,51 +201,67 @@ void smith_waterman(uint32_t core_id) {
       }
       // compute-time calculation
       compute_time+=max_compute_time;
-      //printf("compute time for diagonal %d is %d \n",diagonal_index,max_compute_time);
+      printf("compute time for diagonal %d is %d \n",diagonal_index,max_compute_time);
+
       // synchronization-time calculation
       synchronization_time+=(max_compute_time-min_compute_time);
-      //printf("synchronization time for diagonal %d is %d \n",diagonal_index,max_compute_time-min_compute_time);
+      printf("synchronization time for diagonal %d is %d \n",diagonal_index,max_compute_time-min_compute_time);
+
       // resetting-temp_compute
       for(int i=0;i<active_cores;i++) {
         temp_compute[i]=0;
       }
+
     }
     mempool_barrier(cc);
   }
 }
 
+
 int main() {
+
   uint32_t core_id = mempool_get_core_id();
+
   // Initialize synchronization variables
   mempool_barrier_init(core_id);
+
   // must manually sleep cores you don't require
   if (core_id >=cc) {
     while(1);}
+
   // Initialize the array by core 0
   if (core_id == 0) {
-    //printf("array has been initialized\n");
+
+    printf("array has been initialized\n");
     //initializing the dp matrix
     memset(dp, 0, sizeof(dp));
-    //printf("Sequence 1: %s (Length: %d)\n", seq1, seq1_len);
-    //printf("Sequence 2: %s (Length: %d)\n", seq2, seq2_len);
+
+    printf("Sequence 1: %s (Length: %d)\n", seq1, seq1_len);
+    printf("Sequence 2: %s (Length: %d)\n", seq2, seq2_len);
+
  }
+
   mempool_barrier(cc);
+
   // timer here computes complete kernel duration
   uint32_t start_cycles=mempool_get_timer();
   smith_waterman(core_id);
   uint32_t end_cycles=mempool_get_timer();
   uint32_t cycle_count=end_cycles-start_cycles;
-  
-  
+
+
   mempool_barrier(cc);
   if(core_id==0) {
+
     // includes the misc calcs such as start,end indices num_elem/core etc
-    printf("%d\t%d\t%d", compute_time, synchronization_time, cycle_count);
+    printf("the cycles taken for complete smith_waterman kernel is %d \n",cycle_count);
     // includes only diagonal_computation
-    //printf("the cycles taken for compute is %d \n",compute_time);
+    printf("the cycles taken for compute is %d \n",compute_time);
     // synchronization ashte
-    //printf("the cycles taken for synchronization is %d \n",synchronization_time);
+    printf("the cycles taken for synchronization is %d \n",synchronization_time);
   }
+
   mempool_barrier(cc);
   return 0;
 }
+
